@@ -216,7 +216,7 @@ AVX-512 keeps portable CPU routing and vectorizes middle-permutation coding.
 The benchmark's device column stays at zero because that work runs on the
 host. `ctest` and `./build/benes-tests --extended` both passed. Portable
 32-bit, portable 64-bit, AVX-512 32-bit, AVX-512 64-bit, and 16-thread AVX-512
-outputs were byte-identical for every size in the compression table below,
+outputs were byte-identical for every size in the compression-size table above,
 plus 8, 4,097, and 43,690.
 
 Blob sizes match the compression-size table. At 1,048,575 entries the blob is
