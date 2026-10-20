@@ -445,7 +445,7 @@ void test_invalid_data() {
         "embedded section accepted nonzero logical-stream padding");
 }
 
-void test_uint64_layout_and_sparse_file() {
+void test_uint64_layout() {
     for (const std::uint64_t count : {
              (std::uint64_t{1} << 32) - 1,
              std::uint64_t{1} << 32,
@@ -466,8 +466,10 @@ void test_uint64_layout_and_sparse_file() {
         (void)benes::detail::checked_size_bytes(
             std::numeric_limits<std::size_t>::max(), 2);
     }, "overflowing allocation size was accepted");
+}
 
 #ifndef _WIN32
+void test_sparse_uint64_file() {
     // Sparse-file semantics differ on Windows, where extending a file without
     // FSCTL_SET_SPARSE can allocate the full tens-of-gigabytes range.
     const std::uint64_t count = std::uint64_t{1} << 33;
@@ -500,8 +502,8 @@ void test_uint64_layout_and_sparse_file() {
                 std::to_string(value));
     }
     std::filesystem::remove(path);
-#endif
 }
+#endif
 
 void test_file_lookup() {
     const auto permutation = random_permutation(127, 0x515151);
@@ -523,24 +525,6 @@ void test_file_lookup() {
                 "file inverse lookup mismatch");
         }
     }
-
-#ifndef _WIN32
-    const int descriptor = ::open(path.c_str(), O_RDONLY);
-    require(descriptor >= 0, "failed to open file for mmap");
-    void* mapping = ::mmap(nullptr, bytes.size(), PROT_READ, MAP_PRIVATE,
-        descriptor, 0);
-    require(mapping != MAP_FAILED, "failed to mmap compressed permutation");
-    const benes::CompressedPermutationView mapped(std::span(
-        static_cast<const std::byte*>(mapping), bytes.size()));
-    for (std::uint32_t input = 0; input < permutation.size(); ++input) {
-        require(mapped.forward(input) == permutation[input],
-            "mmap forward lookup mismatch");
-        require(mapped.inverse(permutation[input]) == input,
-            "mmap inverse lookup mismatch");
-    }
-    ::munmap(mapping, bytes.size());
-    ::close(descriptor);
-#endif
 
     const auto raw_path = std::filesystem::temp_directory_path() /
         "benes-perm-raw.bin";
@@ -595,6 +579,36 @@ void test_file_lookup() {
     std::filesystem::remove(corrupt_path);
     std::filesystem::remove(path);
 }
+
+#ifndef _WIN32
+void test_memory_mapped_lookup() {
+    const auto permutation = random_permutation(127, 0x515151);
+    const auto bytes = benes::compress(permutation,
+        {.backend = benes::Backend::portable_cpu});
+    const auto path = std::filesystem::temp_directory_path() /
+        "benes-perm-mmap.bin";
+    {
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    }
+    const int descriptor = ::open(path.c_str(), O_RDONLY);
+    require(descriptor >= 0, "failed to open file for mmap");
+    void* mapping = ::mmap(nullptr, bytes.size(), PROT_READ, MAP_PRIVATE,
+        descriptor, 0);
+    require(mapping != MAP_FAILED, "failed to mmap compressed permutation");
+    const benes::CompressedPermutationView mapped(std::span(
+        static_cast<const std::byte*>(mapping), bytes.size()));
+    for (std::uint32_t input = 0; input < permutation.size(); ++input) {
+        require(mapped.forward(input) == permutation[input],
+            "mmap forward lookup mismatch");
+        require(mapped.inverse(permutation[input]) == input,
+            "mmap inverse lookup mismatch");
+    }
+    ::munmap(mapping, bytes.size());
+    ::close(descriptor);
+    std::filesystem::remove(path);
+}
+#endif
 
 std::vector<std::byte> read_file(const std::filesystem::path& path) {
     std::ifstream input(path, std::ios::binary | std::ios::ate);
@@ -699,8 +713,14 @@ int main(int argc, char** argv) {
         test_uint64_canonical_parity();
         test_format_options();
         test_invalid_data();
-        test_uint64_layout_and_sparse_file();
+        test_uint64_layout();
+#ifndef _WIN32
+        test_sparse_uint64_file();
+#endif
         test_file_lookup();
+#ifndef _WIN32
+        test_memory_mapped_lookup();
+#endif
         test_golden_blobs();
         if (argc > 1 && std::string_view(argv[1]) == "--extended") {
             test_extended();

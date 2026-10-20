@@ -3,7 +3,7 @@
 
 #include <immintrin.h>
 
-#if defined(_MSC_VER) && !defined(__clang__)
+#if defined(_MSC_VER)
 #include <intrin.h>
 #endif
 
@@ -63,17 +63,29 @@ U128 encode_middle_avx512(const std::uint32_t* permutation) {
 } // namespace
 
 bool avx512_available() noexcept {
-#if defined(__GNUC__) || defined(__clang__)
-    __builtin_cpu_init();
-    return __builtin_cpu_supports("avx512f");
-#elif defined(_MSC_VER)
+#if defined(_MSC_VER)
     int registers[4]{};
     __cpuidex(registers, 0, 0);
     if (registers[0] < 7) {
         return false;
     }
+    __cpuidex(registers, 1, 0);
+    constexpr int osxsave = 1 << 27;
+    constexpr int avx = 1 << 28;
+    if ((registers[2] & (osxsave | avx)) != (osxsave | avx)) {
+        return false;
+    }
     __cpuidex(registers, 7, 0);
-    return (registers[1] & (1 << 16)) != 0; // CPUID.7.0:EBX.AVX512F
+    constexpr int avx512f = 1 << 16;
+    if ((registers[1] & avx512f) == 0) {
+        return false;
+    }
+    // The OS must have enabled XMM, YMM, opmask, and ZMM state.
+    constexpr std::uint64_t required_state = 0xe6;
+    return (_xgetbv(0) & required_state) == required_state;
+#elif defined(__GNUC__) || defined(__clang__)
+    __builtin_cpu_init();
+    return __builtin_cpu_supports("avx512f");
 #else
     return false;
 #endif

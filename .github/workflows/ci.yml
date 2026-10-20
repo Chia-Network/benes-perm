@@ -24,17 +24,26 @@ jobs:
         include:
           - name: macOS ARM64
             os: macos-15
+            bin_dir: build
+            exe_suffix: ""
             # Hosted macOS runners use a virtual GPU that cannot create Metal
-            # compute pipelines, so CI covers the portable path on macOS.
+            # compute pipelines, so tests run against the portable path. The
+            # Metal backend still gets a compile-only build below.
             cmake_args: "-DBENES_ENABLE_METAL=OFF"
           - name: Windows x64
             os: windows-2022
+            bin_dir: build/Release
+            exe_suffix: ".exe"
             cmake_args: "-A x64"
           - name: Ubuntu x64
             os: ubuntu-24.04
+            bin_dir: build
+            exe_suffix: ""
             cmake_args: ""
           - name: Ubuntu ARM64
             os: ubuntu-24.04-arm
+            bin_dir: build
+            exe_suffix: ""
             cmake_args: ""
 
     steps:
@@ -72,26 +81,25 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
+      - name: Build Metal backend (compile-only)
+        if: runner.os == 'macOS'
+        run: |
+          cmake -S . -B build-metal \
+            -DCMAKE_BUILD_TYPE=Release -DBENES_ENABLE_METAL=ON \
+            -DBENES_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF
+          cmake --build build-metal --config Release --parallel
+
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
       - name: Run extended tests
         shell: bash
-        run: |
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            ./build/Release/benes-tests.exe --extended
-          else
-            ./build/benes-tests --extended
-          fi
+        run: ./${{ matrix.bin_dir }}/benes-tests${{ matrix.exe_suffix }} --extended
 
       - name: Quick benchmarks
         shell: bash
         run: |
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            bench=build/Release/benes-benchmark.exe
-          else
-            bench=build/benes-benchmark
-          fi
+          bench=./${{ matrix.bin_dir }}/benes-benchmark${{ matrix.exe_suffix }}
           {
             echo "### Quick benchmarks (${{ matrix.name }})"
             echo '```'
@@ -101,9 +109,5 @@ jobs:
             "$bench" cpu 1048576 1 3
             echo "automatic backend, 1 Mi entries, 1 thread"
             "$bench" auto 1048576 1 3
-            echo "AVX-512 backend, 64 Ki entries, 1 thread"
-            if ! "$bench" avx512 65536 1 3; then
-              echo "AVX-512 backend unavailable on this runner"
-            fi
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
