@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS ARM64
+            os: macos-15
+            cmake_args: ""
+          - name: Windows Intel
+            os: windows-2022
+            cmake_args: "-A x64"
+          - name: Ubuntu Intel
+            os: ubuntu-24.04
+            cmake_args: ""
+          - name: Ubuntu ARM64
+            os: ubuntu-24.04-arm
+            cmake_args: ""
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Report runner CPU
+        shell: bash
+        run: |
+          {
+            echo "### Runner CPU (${{ matrix.name }})"
+            echo '```'
+            echo "runner: $RUNNER_OS / $RUNNER_ARCH"
+            case "$RUNNER_OS" in
+              Linux)
+                lscpu | grep -E '^(Architecture|Model name|CPU\(s\)|Thread|Core|Socket)' || true
+                ;;
+              macOS)
+                sysctl -n machdep.cpu.brand_string || true
+                echo "model: $(sysctl -n hw.model), arch: $(uname -m), logical cores: $(sysctl -n hw.ncpu)"
+                ;;
+              Windows)
+                powershell -NoProfile -Command \
+                  'Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed | Format-List'
+                ;;
+            esac
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          ${{ matrix.cmake_args }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Run extended tests
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            ./build/Release/benes-tests.exe --extended
+          else
+            ./build/benes-tests --extended
+          fi
+
+      - name: Quick benchmarks
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            bench=build/Release/benes-benchmark.exe
+          else
+            bench=build/benes-benchmark
+          fi
+          {
+            echo "### Quick benchmarks (${{ matrix.name }})"
+            echo '```'
+            echo "portable CPU, 64 Ki entries, 1 thread"
+            "$bench" cpu 65536 1 3
+            echo "portable CPU, 1 Mi entries, 1 thread"
+            "$bench" cpu 1048576 1 3
+            echo "automatic backend, 1 Mi entries, 1 thread"
+            "$bench" auto 1048576 1 3
+            echo "AVX-512 backend, 64 Ki entries, 1 thread"
+            if ! "$bench" avx512 65536 1 3; then
+              echo "AVX-512 backend unavailable on this runner"
+            fi
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

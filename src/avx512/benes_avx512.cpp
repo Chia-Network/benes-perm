@@ -3,6 +3,10 @@
 
 #include <immintrin.h>
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+#endif
+
 namespace benes::detail {
 namespace {
 
@@ -62,6 +66,14 @@ bool avx512_available() noexcept {
 #if defined(__GNUC__) || defined(__clang__)
     __builtin_cpu_init();
     return __builtin_cpu_supports("avx512f");
+#elif defined(_MSC_VER)
+    int registers[4]{};
+    __cpuidex(registers, 0, 0);
+    if (registers[0] < 7) {
+        return false;
+    }
+    __cpuidex(registers, 7, 0);
+    return (registers[1] & (1 << 16)) != 0; // CPUID.7.0:EBX.AVX512F
 #else
     return false;
 #endif

@@ -19,10 +19,13 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <sys/mman.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <vector>
+
+#ifndef _WIN32
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -464,6 +467,9 @@ void test_uint64_layout_and_sparse_file() {
             std::numeric_limits<std::size_t>::max(), 2);
     }, "overflowing allocation size was accepted");
 
+#ifndef _WIN32
+    // Sparse-file semantics differ on Windows, where extending a file without
+    // FSCTL_SET_SPARSE can allocate the full tens-of-gigabytes range.
     const std::uint64_t count = std::uint64_t{1} << 33;
     const benes::detail::Layout layout =
         benes::detail::make_layout(count, {});
@@ -494,6 +500,7 @@ void test_uint64_layout_and_sparse_file() {
                 std::to_string(value));
     }
     std::filesystem::remove(path);
+#endif
 }
 
 void test_file_lookup() {
@@ -515,6 +522,7 @@ void test_file_lookup() {
             "file inverse lookup mismatch");
     }
 
+#ifndef _WIN32
     const int descriptor = ::open(path.c_str(), O_RDONLY);
     require(descriptor >= 0, "failed to open file for mmap");
     void* mapping = ::mmap(nullptr, bytes.size(), PROT_READ, MAP_PRIVATE,
@@ -530,6 +538,7 @@ void test_file_lookup() {
     }
     ::munmap(mapping, bytes.size());
     ::close(descriptor);
+#endif
 
     const auto raw_path = std::filesystem::temp_directory_path() /
         "benes-perm-raw.bin";

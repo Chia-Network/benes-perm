@@ -63,6 +63,9 @@ if(BENES_ENABLE_AVX512 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         set_source_files_properties(src/avx512/benes_avx512.cpp
             PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512vl")
+    elseif(MSVC)
+        set_source_files_properties(src/avx512/benes_avx512.cpp
+            PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
     endif()
 endif()
 
@@ -80,8 +83,11 @@ if(BENES_BUILD_TOOLS)
     target_include_directories(benes-benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_executable(benes-generate-golden tools/generate_golden.cpp)
     target_link_libraries(benes-generate-golden PRIVATE benes)
-    add_executable(benes-lookup-benchmark tools/lookup_benchmark.cpp)
-    target_link_libraries(benes-lookup-benchmark PRIVATE benes)
+    if(NOT WIN32)
+        # The lookup benchmark measures mmap-backed lookups and is POSIX-only.
+        add_executable(benes-lookup-benchmark tools/lookup_benchmark.cpp)
+        target_link_libraries(benes-lookup-benchmark PRIVATE benes)
+    endif()
 endif()
 
 install(TARGETS benes
