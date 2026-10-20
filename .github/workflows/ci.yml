@@ -27,10 +27,10 @@ jobs:
             # Hosted macOS runners use a virtual GPU that cannot create Metal
             # compute pipelines, so CI covers the portable path on macOS.
             cmake_args: "-DBENES_ENABLE_METAL=OFF"
-          - name: Windows Intel
+          - name: Windows x64
             os: windows-2022
             cmake_args: "-A x64"
-          - name: Ubuntu Intel
+          - name: Ubuntu x64
             os: ubuntu-24.04
             cmake_args: ""
           - name: Ubuntu ARM64
