@@ -306,39 +306,51 @@ slower for AVX-512. The blob is again identical, 2,449,430 bytes.
 
 ### Cycles, instruction mix, and bandwidth
 
-`perf stat -e cycles,instructions` covered one warmup compression plus five
-measured compressions of 1,048,575 entries. Core cycles per entry below
-attribute the process cycle count by the median compression's share of
-elapsed time. The TSC on this host runs at 3.504 GHz while the core turbos
-near 4.6 GHz, so TSC ticks per entry are lower than core cycles per entry.
+`perf stat -e cycles,instructions` collected whole-process counters for a
+benchmark run with five measured compressions of 1,048,575 entries. The
+process also includes a 32-entry warmup, input preparation, and a serial
+forward/inverse verification pass. IPC below is for the whole process.
 
-| path | threads | core cycles/entry | instructions/cycle | TSC cycles/entry |
+The core-cycle figures are time-attributed estimates: the process cycle
+count was allocated by the median compression's share of elapsed time.
+They are not isolated compression measurements. In particular, serial
+verification and parallel compression have different CPU utilization, so
+this allocation cannot reliably establish aggregate compression cycles per
+entry or compare that metric across thread counts. The figures are retained
+as estimates from the original run.
+
+Elapsed TSC ticks per entry are derived from compression wall time at the
+host's 3.504 GHz TSC frequency; they are not measured core cycles.
+
+| path | threads | estimated core cycles/entry (time-attributed) | whole-process instructions/cycle | elapsed TSC ticks/entry (compression wall time) |
 | --- | ---: | ---: | ---: | ---: |
 | portable | 1 | 1,763 | 1.64 | 1,344 |
 | AVX-512 | 1 | 1,602 | 1.73 | 1,231 |
 | AVX-512 | 16 | 391 wall, 2,249 aggregate | 1.21 | 292 wall |
 
-A `cycles:u` profile of one-thread AVX-512 compression puts 91.09% of user
-cycles in the portable recursive router `encode_compact_node` and 0.75% in
-`encode_factoradic_avx512`. That helper is a ZMM integer loop
+The reported one-thread AVX-512 `cycles:u` profile attributes 91.09% of
+sampled user cycles to the portable recursive router `encode_compact_node`
+and 0.75% to `encode_factoradic_avx512`. That helper is a ZMM integer loop
 (`vpcmpnleud`, masked `vpsubd`, `vpbroadcastd`, `vpaddd`) followed by scalar
-128-bit factorial accumulation. The modest one-thread speedup follows from
-how little of the runtime that loop is.
+128-bit factorial accumulation. These sample shares describe the profiled
+run, rather than an isolated compression timing breakdown.
 
-System-wide IMC counters during the same six-compression process, after
-subtracting an 11.61 MiB/s read and 3.63 MiB/s write idle baseline:
+The following system-wide IMC counters cover the benchmark process, with
+an 11.61 MiB/s read and 3.63 MiB/s write idle baseline subtracted. They
+include input preparation, verification, and any other host activity during
+collection; they do not isolate encoder traffic or peak compression bandwidth:
 
-| path | threads | DRAM read | DRAM write | average bandwidth |
+| path | threads | system DRAM read (baseline-adjusted) | system DRAM write (baseline-adjusted) | system average bandwidth (baseline-adjusted) |
 | --- | ---: | ---: | ---: | ---: |
 | AVX-512 | 1 | 377 MiB | 316 MiB | 315 MiB/s |
 | AVX-512 | 16 | 974 MiB | 944 MiB | 3,560 MiB/s |
 
-One thread retires about 23,000 demand L3 load misses per compression
-(`mem_load_retired.l3_miss`) and about 1.15 million `longest_lat_cache.miss`
-events. Sixteen threads retire about 63,000 demand L3 load misses and about
-3.09 million `longest_lat_cache.miss` events per compression. The one-thread
-rate is far below this CPU's DRAM ceiling; the encoder is limited by the
-scalar routing work shown in the profile.
+Reported process-counter estimates normalized per compression were about
+23,000 `mem_load_retired.l3_miss` events and 1.15 million
+`longest_lat_cache.miss` events at one thread, and about 63,000 and 3.09
+million events respectively at sixteen threads. These are not isolated
+compression-region counts. Whole-process counters and system-average
+bandwidth do not establish the encoder's compression-phase bottleneck.
 
 `/usr/bin/time -v` on the full benchmark process, including its forward and
 inverse check of every entry, reported 104,732 kB maximum resident set for
