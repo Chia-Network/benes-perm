@@ -2,6 +2,7 @@
 #include <benes/benes.hpp>
 
 #include "../src/internal.hpp"
+#include "golden_inputs.hpp"
 
 #include <algorithm>
 #include <array>
@@ -602,10 +603,8 @@ void test_golden_blobs() {
     std::iota(identity.begin(), identity.end(), 0);
     std::vector<std::uint32_t> reverse(33);
     std::iota(reverse.rbegin(), reverse.rend(), 0);
-    std::vector<std::uint32_t> random(47);
-    std::iota(random.begin(), random.end(), 0);
-    std::mt19937_64 generator(0x474f4c44454eULL);
-    std::shuffle(random.begin(), random.end(), generator);
+    const std::vector<std::uint32_t> random(
+        benes::test::random47.begin(), benes::test::random47.end());
 
     for (const auto& [name, permutation] :
         std::array<std::pair<std::string, std::vector<std::uint32_t>>, 3>{{
