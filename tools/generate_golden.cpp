@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <benes/benes.hpp>
 
+#include "../tests/golden_inputs.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -38,11 +40,6 @@ int main(int argc, char** argv) {
     std::iota(reverse.rbegin(), reverse.rend(), 0);
     write(directory, "reverse-33.benes", reverse);
 
-    // std::shuffle output is implementation-defined (libc++ vs libstdc++).
-    const std::vector<std::uint32_t> random{
-        1, 18, 34, 17, 27, 33, 46, 13, 28, 36, 10, 31, 39, 26, 8, 35, 30, 38,
-        19, 44, 23, 11, 21, 42, 7, 6, 20, 29, 16, 37, 3, 25, 15, 5, 43, 12,
-        45, 24, 22, 9, 32, 4, 2, 41, 40, 14, 0};
-    write(directory, "random-47.benes", random);
+    write(directory, "random-47.benes", golden_random_47());
     return 0;
 }
