@@ -513,13 +513,15 @@ void test_file_lookup() {
         std::ofstream output(path, std::ios::binary | std::ios::trunc);
         output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     }
-    const benes::CompressedPermutationFile file(path, 2);
-    require(file.size() == permutation.size(), "file view has wrong size");
-    for (std::uint32_t input = 0; input < permutation.size(); ++input) {
-        require(file.forward(input) == permutation[input],
-            "file forward lookup mismatch");
-        require(file.inverse(permutation[input]) == input,
-            "file inverse lookup mismatch");
+    {
+        const benes::CompressedPermutationFile file(path, 2);
+        require(file.size() == permutation.size(), "file view has wrong size");
+        for (std::uint32_t input = 0; input < permutation.size(); ++input) {
+            require(file.forward(input) == permutation[input],
+                "file forward lookup mismatch");
+            require(file.inverse(permutation[input]) == input,
+                "file inverse lookup mismatch");
+        }
     }
 
 #ifndef _WIN32
