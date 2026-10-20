@@ -665,7 +665,7 @@ __device__ ulonglong2 compact_find64(
     std::uint64_t position) {
     std::uint64_t parity = 0;
     while (true) {
-        const auto* address = reinterpret_cast<unsigned long long*>(
+        auto* address = reinterpret_cast<unsigned long long*>(
             &parents[position]);
         const std::uint64_t packed = atomicCAS(address, 0, 0);
         parity ^= packed >> 63;
