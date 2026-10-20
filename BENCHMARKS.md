@@ -1,6 +1,7 @@
 # Benchmarks
 
-Results below were collected on 2026-09-25 on an Apple M5 Max:
+Results through the Lookup section were collected on 2026-09-25 on an Apple
+M5 Max:
 
 - 40-core Apple GPU, Metal 4
 - 18 CPU cores (12 performance, 6 efficiency)
@@ -8,10 +9,11 @@ Results below were collected on 2026-09-25 on an Apple M5 Max:
 - Apple Clang 21.0
 - Release build
 
-Commands are shown so the same workload can be repeated on CUDA and AVX-512
-machines. Times are medians of five runs unless stated otherwise. Compression
-includes validation, allocation, GPU submission, synchronization, and canonical
-blob construction. `device_seconds` is Metal command-buffer GPU time.
+The AVX-512 section records a separate host. Commands are shown so the same
+workload can be repeated on CUDA hardware. Times are medians of five runs
+unless stated otherwise. Compression includes validation, allocation, GPU
+submission, synchronization, and canonical blob construction.
+`device_seconds` is Metal command-buffer GPU time.
 
 ## Correctness
 
@@ -200,18 +202,72 @@ lookup follows data-dependent packets. mmap remains preferable for high-rate
 random lookup. Embedded placement improved this cached-file microbenchmark,
 but it is a logical-locality option, not a guarantee about physical page reads.
 
-## Required CUDA and AVX-512 runs
+## AVX-512
 
-CUDA and AVX-512 have not been executed on this Apple system. CUDA's separate
-32-bit and 64-bit descriptors and buffers, bit-63 atomic parents, grid-stride
-large-work dispatch, clustered atomic switch packing, exact-bit middle
-offsets, and host serialization were reviewed for parity with the tested Metal
-path, but no CUDA compiler or hardware was available. On the appropriate
-machines:
+Collected on 2026-10-20 on an 11th Gen Intel Core i9-11900K at 3.50 GHz:
 
-1. Build with the backend enabled.
-2. Run `ctest` and `benes-tests --extended`.
-3. Run the exact size, non-power-of-two, and lookup commands above.
+- Ubuntu 22.04.5 LTS
+- g++ 11.4.0
+- Release build with `BENES_ENABLE_AVX512=ON`
+
+AVX-512 keeps portable CPU routing and vectorizes middle-permutation coding.
+The benchmark's device column stays at zero because that work runs on the
+host. Both compression runs used one thread. The 32-bit and 64-bit source
+paths wrote the same 2,449,432-byte blob, with a 2,449,408-byte payload,
+matching the size table above.
+
+| path | wall seconds | million entries/s |
+| --- | ---: | ---: |
+| AVX-512, 32-bit | 0.365730 | 2.87 |
+| AVX-512, 64-bit | 0.412088 | 2.54 |
+
+The 64-bit path was 12.7% slower by wall time on this 1,048,576-entry input.
+Its permutation and routing arrays move twice as much data and emit the same
+blob.
+
+```sh
+./build/benes-benchmark avx512 1048576 1 5
+./build/benes-benchmark avx51264 1048576 1 5
+```
+
+### Lookup
+
+1,048,576 entries and 100,000 seeded random lookups, with the middle stored
+separately. The lookup tool reports one pass per mode. Compression for this
+run used the automatic backend, which selects AVX-512 on this CPU. The timed
+lookups themselves stay on the portable CPU path.
+
+| mode | forward | inverse |
+| --- | ---: | ---: |
+| memory | 3,776.34 ns | 3,771.05 ns |
+| mmap | 3,769.63 ns | 3,767.89 ns |
+| file, cold | 11,599.3 ns | 12,347.3 ns |
+| file, warm | 11,583 ns | 12,336.6 ns |
+
+```sh
+./build/benes-lookup-benchmark 1048576 100000
+```
+
+Memory and mmap take the same time on this host. A second pass over the
+explicit file reader is the warm measurement; it stays several times slower
+because each lookup follows data-dependent packets through the page cache.
+
+## Remaining CUDA and AVX-512 runs
+
+The AVX-512 section records one-thread compression at 1,048,576 entries and
+the default lookup workload. Default `ctest` passed on that host. CUDA has
+not been executed. Its separate 32-bit and 64-bit descriptors and buffers,
+bit-63 atomic parents, grid-stride large-work dispatch, clustered atomic
+switch packing, exact-bit middle offsets, and host serialization were reviewed
+for parity with the tested Metal path, but no CUDA compiler or hardware was
+available. Still required:
+
+1. On CUDA, build with the backend enabled.
+2. Run `ctest` and `benes-tests --extended`. On the AVX-512 host, run
+   `benes-tests --extended`; the default `ctest` already passed.
+3. Run the exact size, non-power-of-two, and lookup-layout commands in the
+   sections above. The recorded AVX-512 numbers cover `n = 1,048,576`, one
+   thread, and the separate middle placement.
 4. Require both 32-bit and 64-bit source paths to match the single-thread
    portable bytes. The test suite includes backend-gated compact boundary
    cases through 4,097 entries; on AVX-512 it also exhausts all permutations
@@ -223,6 +279,6 @@ machines:
 
 Do not treat source review or cross-compilation as runtime validation.
 
-The x86-64 cross-compile and `otool` inspection command in `README.md` is the
-maintenance check available on Apple Silicon. It must be followed by the
-runtime workload above on an AVX-512 host.
+The x86-64 cross-compile and `otool` inspection command in `README.md` remains
+the maintenance check available on Apple Silicon. Runtime numbers belong in
+the AVX-512 section above.
