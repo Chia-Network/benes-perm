@@ -230,17 +230,16 @@ One seeded random permutation of 1,048,575 entries. Five-run medians:
 
 | threads | portable seconds | portable million entries/s | portable speedup | AVX-512 seconds | AVX-512 million entries/s | AVX-512 speedup |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 0.409565 | 2.56 | 1.00x | 0.366627 | 2.86 | 1.00x |
-| 2 | 0.226702 | 4.63 | 1.81x | 0.215550 | 4.86 | 1.70x |
-| 4 | 0.142678 | 7.35 | 2.87x | 0.131169 | 7.99 | 2.80x |
-| 8 | 0.118297 | 8.86 | 3.46x | 0.111237 | 9.43 | 3.30x |
-| 16 | 0.102999 | 10.18 | 3.98x | 0.094230 | 11.13 | 3.89x |
+| 1 | 0.406278 | 2.58 | 1.00x | 0.366651 | 2.86 | 1.00x |
+| 2 | 0.223848 | 4.68 | 1.82x | 0.207852 | 5.04 | 1.76x |
+| 4 | 0.136268 | 7.69 | 2.98x | 0.127505 | 8.22 | 2.88x |
+| 8 | 0.098394 | 10.66 | 4.13x | 0.092747 | 11.31 | 3.95x |
+| 16 | 0.088196 | 11.89 | 4.61x | 0.085487 | 12.27 | 4.29x |
 
-AVX-512 is 11.7% faster than the portable encoder at one thread. Both keep
-improving through all 16 hardware threads, but the curve flattens after four:
-four threads are already 2.80x, and sixteen threads reach 3.89x. A later
-16-thread pair at 1,048,576 entries measured 0.103658 s portable and
-0.105843 s AVX-512, so the 16-thread gap is within run-to-run noise.
+AVX-512 is 10.8% faster than the portable encoder at one thread. Both keep
+improving through all 8 cores, to 3.95x for AVX-512 and 4.13x for portable.
+Hyperthreads add a further 8% and 12%, reaching 4.29x and 4.61x at 16
+hardware threads. AVX-512 is still 3% ahead at 16 threads.
 
 ```sh
 for t in 1 2 4 8 16; do
@@ -253,9 +252,9 @@ Sixteen-thread medians for the non-power-of-two sizes, five runs:
 
 | n | portable seconds | portable million entries/s | AVX-512 seconds | AVX-512 million entries/s |
 | ---: | ---: | ---: | ---: | ---: |
-| 43,690 | 0.003956 | 11.04 | 0.004444 | 9.83 |
-| 1,048,575 | 0.105901 | 9.90 | 0.103843 | 10.10 |
-| 1,048,576 | 0.103658 | 10.12 | 0.105843 | 9.91 |
+| 43,690 | 0.002805 | 15.58 | 0.003063 | 14.27 |
+| 1,048,575 | 0.088310 | 11.87 | 0.085545 | 12.26 |
+| 1,048,576 | 0.087301 | 12.01 | 0.085416 | 12.28 |
 
 The 43,690-entry run is only a few milliseconds, so its rate is coarse. The
 two neighboring million-entry cases take the same time, matching the size
@@ -274,25 +273,24 @@ Paired five-run medians at 1,048,576 entries and one thread:
 
 | path | seconds | million entries/s | relative to its 32-bit path |
 | --- | ---: | ---: | ---: |
-| portable, 32-bit | 0.409285 | 2.56 | 1.00x |
-| portable, 64-bit | 0.445420 | 2.35 | 0.92x |
-| AVX-512, 32-bit | 0.368720 | 2.84 | 1.00x |
-| AVX-512, 64-bit | 0.408820 | 2.56 | 0.90x |
+| portable, 32-bit | 0.404262 | 2.59 | 1.00x |
+| portable, 64-bit | 0.437234 | 2.40 | 0.92x |
+| AVX-512, 32-bit | 0.363174 | 2.89 | 1.00x |
+| AVX-512, 64-bit | 0.398729 | 2.63 | 0.91x |
 
-An earlier five-run AVX-512 pair on this host was 0.365730 s and 0.412088 s.
-The 64-bit path is 8.8% slower for the portable encoder and 10.9% slower for
+The 64-bit path is 8.2% slower for the portable encoder and 9.8% slower for
 AVX-512. Both widths emit the same 2,449,432-byte blob.
 
 Nine-run medians at 1,048,575 entries and 16 threads:
 
 | path | seconds | million entries/s | relative to its 32-bit path |
 | --- | ---: | ---: | ---: |
-| portable, 32-bit | 0.115183 | 9.10 | 1.00x |
-| portable, 64-bit | 0.134006 | 7.82 | 0.86x |
-| AVX-512, 32-bit | 0.110921 | 9.45 | 1.00x |
-| AVX-512, 64-bit | 0.127765 | 8.21 | 0.87x |
+| portable, 32-bit | 0.089722 | 11.69 | 1.00x |
+| portable, 64-bit | 0.116403 | 9.01 | 0.77x |
+| AVX-512, 32-bit | 0.085364 | 12.28 | 1.00x |
+| AVX-512, 64-bit | 0.140812 | 7.45 | 0.61x |
 
-At 16 threads the 64-bit path is 16.3% slower for portable CPU and 15.2%
+At 16 threads the 64-bit path is 29.7% slower for portable CPU and 65%
 slower for AVX-512. The blob is again identical, 2,449,430 bytes.
 
 ```sh
@@ -316,35 +314,35 @@ near 4.6 GHz, so TSC ticks per entry are lower than core cycles per entry.
 
 | path | threads | core cycles/entry | instructions/cycle | TSC cycles/entry |
 | --- | ---: | ---: | ---: | ---: |
-| portable | 1 | 1,799 | 1.61 | 1,371 |
-| AVX-512 | 1 | 1,600 | 1.75 | 1,219 |
-| AVX-512 | 16 | 444 wall, 2,221 aggregate | 1.23 | 334 wall |
+| portable | 1 | 1,763 | 1.64 | 1,344 |
+| AVX-512 | 1 | 1,602 | 1.73 | 1,231 |
+| AVX-512 | 16 | 391 wall, 2,249 aggregate | 1.21 | 292 wall |
 
-A `cycles:u` profile of one-thread AVX-512 compression puts 91.35% of user
-cycles in the portable recursive router `encode_compact_node` and 0.84% in
+A `cycles:u` profile of one-thread AVX-512 compression puts 91.09% of user
+cycles in the portable recursive router `encode_compact_node` and 0.75% in
 `encode_factoradic_avx512`. That helper is a ZMM integer loop
 (`vpcmpnleud`, masked `vpsubd`, `vpbroadcastd`, `vpaddd`) followed by scalar
 128-bit factorial accumulation. The modest one-thread speedup follows from
 how little of the runtime that loop is.
 
 System-wide IMC counters during the same six-compression process, after
-subtracting a 127.02 MiB/s read and 38.02 MiB/s write idle baseline:
+subtracting an 11.61 MiB/s read and 3.63 MiB/s write idle baseline:
 
 | path | threads | DRAM read | DRAM write | average bandwidth |
 | --- | ---: | ---: | ---: | ---: |
-| AVX-512 | 1 | 313 MiB | 358 MiB | 306 MiB/s |
-| AVX-512 | 16 | 1,085 MiB | 992 MiB | 3,179 MiB/s |
+| AVX-512 | 1 | 377 MiB | 316 MiB | 315 MiB/s |
+| AVX-512 | 16 | 974 MiB | 944 MiB | 3,560 MiB/s |
 
-One thread retires about 31,000 demand L3 load misses per compression
-(`mem_load_retired.l3_miss`) and about 1.26 million `longest_lat_cache.miss`
-events. Sixteen threads retire about 87,000 demand L3 load misses and about
-3.17 million `longest_lat_cache.miss` events per compression. The one-thread
+One thread retires about 23,000 demand L3 load misses per compression
+(`mem_load_retired.l3_miss`) and about 1.15 million `longest_lat_cache.miss`
+events. Sixteen threads retire about 63,000 demand L3 load misses and about
+3.09 million `longest_lat_cache.miss` events per compression. The one-thread
 rate is far below this CPU's DRAM ceiling; the encoder is limited by the
 scalar routing work shown in the profile.
 
 `/usr/bin/time -v` on the full benchmark process, including its forward and
-inverse check of every entry, reported 112,248 kB maximum resident set for
-16-thread AVX-512 at 1,048,576 entries and 100,248 kB for the portable
+inverse check of every entry, reported 104,732 kB maximum resident set for
+16-thread AVX-512 at 1,048,576 entries and 94,920 kB for the portable
 encoder. That wall time is dominated by the serial check. The compression
 medians above exclude it.
 
@@ -358,14 +356,15 @@ both are page-cache hits.
 
 | middle placement | memory forward | memory inverse | mmap forward | mmap inverse | file forward | file inverse |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| separate | 3,879.39 ns | 3,896.59 ns | 3,884.13 ns | 3,892.65 ns | 11,635.4 ns | 11,474.5 ns |
-| embedded input | 3,918.23 ns | 3,933.61 ns | 3,934.64 ns | 3,938.11 ns | 11,251.4 ns | 11,686.8 ns |
-| embedded output | 3,939.27 ns | 3,923.16 ns | 3,919.39 ns | 3,925.74 ns | 11,126.4 ns | 11,135.9 ns |
+| separate | 3,939.87 ns | 3,896.54 ns | 3,885.05 ns | 3,899.39 ns | 11,719.8 ns | 11,574.8 ns |
+| embedded input | 3,909.62 ns | 3,924.7 ns | 3,914.28 ns | 3,925.26 ns | 11,299.4 ns | 10,895.7 ns |
+| embedded output | 3,906.33 ns | 3,916.03 ns | 3,909.76 ns | 3,929.86 ns | 11,033.5 ns | 10,911 ns |
 
 File columns are the warm pass. Embedded output is the fastest file case on
-this host, by a few hundred nanoseconds. Memory and mmap agree. A separate
-1,048,576-entry run with the default layout landed in the same range: about
-3.77 µs in memory and about 11.6–12.3 µs from the file reader.
+this host, about 0.7 µs ahead of the separate layout. Memory and mmap agree.
+A separate 1,048,576-entry run with the default layout measured 3,740.42 ns
+forward and 3,761.8 ns inverse in memory, and 11,756.4 ns forward and
+11,532.5 ns inverse from the file reader.
 
 ```sh
 for layout in separate input output; do
