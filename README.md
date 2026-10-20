@@ -241,10 +241,9 @@ The benchmark tools are:
 Appending `64` to a compression backend name (`cpu64`, `metal64`, `cuda64`, or
 `avx51264`) benchmarks the distinct 64-bit source/index path on a bounded input.
 
-Single-thread AVX-512 compression and the default lookup workload have been
-measured on an Intel Core i9-11900K. CUDA still needs its runtime matrix on
-NVIDIA hardware, and the remaining AVX-512 thread sweep is open. The measured
-results and the outstanding workload are in `BENCHMARKS.md`.
+AVX-512 compression, lookup, and the thread sweep have been measured on an
+Intel Core i9-11900K. CUDA still needs its runtime matrix on NVIDIA hardware.
+The measured results and the outstanding CUDA workload are in `BENCHMARKS.md`.
 
 The optional tools exercise the public API for compression timing, lookup
 timing, golden generation, and persistence checks. The obsolete standalone

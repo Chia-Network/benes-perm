@@ -206,79 +206,194 @@ but it is a logical-locality option, not a guarantee about physical page reads.
 
 Collected on 2026-10-20 on an 11th Gen Intel Core i9-11900K at 3.50 GHz:
 
-- Ubuntu 22.04.5 LTS
+- 8 cores, 16 hardware threads, AVX-512F/BW/VL
+- Ubuntu 22.04.5 LTS, kernel 5.15.0-187-generic
 - g++ 11.4.0
 - Release build with `BENES_ENABLE_AVX512=ON`
+- TSC frequency 3.504 GHz, turbo up to 4.6 GHz
 
 AVX-512 keeps portable CPU routing and vectorizes middle-permutation coding.
 The benchmark's device column stays at zero because that work runs on the
-host. Both compression runs used one thread. The 32-bit and 64-bit source
-paths wrote the same 2,449,432-byte blob, with a 2,449,408-byte payload,
-matching the size table above.
+host. `ctest` and `./build/benes-tests --extended` both passed. Portable
+32-bit, portable 64-bit, AVX-512 32-bit, AVX-512 64-bit, and 16-thread AVX-512
+outputs were byte-identical for every size in the compression table below,
+plus 8, 4,097, and 43,690.
 
-| path | wall seconds | million entries/s |
-| --- | ---: | ---: |
-| AVX-512, 32-bit | 0.365730 | 2.87 |
-| AVX-512, 64-bit | 0.412088 | 2.54 |
+Blob sizes match the compression-size table. At 1,048,575 entries the blob is
+2,449,430 bytes (2,449,406-byte payload). At 1,048,576 entries it is
+2,449,432 bytes (2,449,408-byte payload). At 43,690 entries it is 77,165 bytes
+(77,141-byte payload).
 
-The 64-bit path was 12.7% slower by wall time on this 1,048,576-entry input.
-Its permutation and routing arrays move twice as much data and emit the same
-blob.
+### Thread scaling
+
+One seeded random permutation of 1,048,575 entries. Five-run medians:
+
+| threads | portable seconds | portable million entries/s | portable speedup | AVX-512 seconds | AVX-512 million entries/s | AVX-512 speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 0.409565 | 2.56 | 1.00x | 0.366627 | 2.86 | 1.00x |
+| 2 | 0.226702 | 4.63 | 1.81x | 0.215550 | 4.86 | 1.70x |
+| 4 | 0.142678 | 7.35 | 2.87x | 0.131169 | 7.99 | 2.80x |
+| 8 | 0.118297 | 8.86 | 3.46x | 0.111237 | 9.43 | 3.30x |
+| 16 | 0.102999 | 10.18 | 3.98x | 0.094230 | 11.13 | 3.89x |
+
+AVX-512 is 11.7% faster than the portable encoder at one thread. Both keep
+improving through all 16 hardware threads, but the curve flattens after four:
+four threads are already 2.80x, and sixteen threads reach 3.89x. A later
+16-thread pair at 1,048,576 entries measured 0.103658 s portable and
+0.105843 s AVX-512, so the 16-thread gap is within run-to-run noise.
 
 ```sh
+for t in 1 2 4 8 16; do
+  ./build/benes-benchmark cpu 1048575 "$t" 5
+  ./build/benes-benchmark avx512 1048575 "$t" 5
+done
+```
+
+Sixteen-thread medians for the non-power-of-two sizes, five runs:
+
+| n | portable seconds | portable million entries/s | AVX-512 seconds | AVX-512 million entries/s |
+| ---: | ---: | ---: | ---: | ---: |
+| 43,690 | 0.003956 | 11.04 | 0.004444 | 9.83 |
+| 1,048,575 | 0.105901 | 9.90 | 0.103843 | 10.10 |
+| 1,048,576 | 0.103658 | 10.12 | 0.105843 | 9.91 |
+
+The 43,690-entry run is only a few milliseconds, so its rate is coarse. The
+two neighboring million-entry cases take the same time, matching the size
+table's lack of a power-of-two padding cliff.
+
+```sh
+for n in 43690 1048575 1048576; do
+  ./build/benes-benchmark cpu "$n" 16 5
+  ./build/benes-benchmark avx512 "$n" 16 5
+done
+```
+
+### 64-bit source overhead
+
+Paired five-run medians at 1,048,576 entries and one thread:
+
+| path | seconds | million entries/s | relative to its 32-bit path |
+| --- | ---: | ---: | ---: |
+| portable, 32-bit | 0.409285 | 2.56 | 1.00x |
+| portable, 64-bit | 0.445420 | 2.35 | 0.92x |
+| AVX-512, 32-bit | 0.368720 | 2.84 | 1.00x |
+| AVX-512, 64-bit | 0.408820 | 2.56 | 0.90x |
+
+An earlier five-run AVX-512 pair on this host was 0.365730 s and 0.412088 s.
+The 64-bit path is 8.8% slower for the portable encoder and 10.9% slower for
+AVX-512. Both widths emit the same 2,449,432-byte blob.
+
+Nine-run medians at 1,048,575 entries and 16 threads:
+
+| path | seconds | million entries/s | relative to its 32-bit path |
+| --- | ---: | ---: | ---: |
+| portable, 32-bit | 0.115183 | 9.10 | 1.00x |
+| portable, 64-bit | 0.134006 | 7.82 | 0.86x |
+| AVX-512, 32-bit | 0.110921 | 9.45 | 1.00x |
+| AVX-512, 64-bit | 0.127765 | 8.21 | 0.87x |
+
+At 16 threads the 64-bit path is 16.3% slower for portable CPU and 15.2%
+slower for AVX-512. The blob is again identical, 2,449,430 bytes.
+
+```sh
+./build/benes-benchmark cpu 1048576 1 5
+./build/benes-benchmark cpu64 1048576 1 5
 ./build/benes-benchmark avx512 1048576 1 5
 ./build/benes-benchmark avx51264 1048576 1 5
+./build/benes-benchmark cpu 1048575 16 9
+./build/benes-benchmark cpu64 1048575 16 9
+./build/benes-benchmark avx512 1048575 16 9
+./build/benes-benchmark avx51264 1048575 16 9
 ```
+
+### Cycles, instruction mix, and bandwidth
+
+`perf stat -e cycles,instructions` covered one warmup compression plus five
+measured compressions of 1,048,575 entries. Core cycles per entry below
+attribute the process cycle count by the median compression's share of
+elapsed time. The TSC on this host runs at 3.504 GHz while the core turbos
+near 4.6 GHz, so TSC ticks per entry are lower than core cycles per entry.
+
+| path | threads | core cycles/entry | instructions/cycle | TSC cycles/entry |
+| --- | ---: | ---: | ---: | ---: |
+| portable | 1 | 1,799 | 1.61 | 1,371 |
+| AVX-512 | 1 | 1,600 | 1.75 | 1,219 |
+| AVX-512 | 16 | 444 wall, 2,221 aggregate | 1.23 | 334 wall |
+
+A `cycles:u` profile of one-thread AVX-512 compression puts 91.35% of user
+cycles in the portable recursive router `encode_compact_node` and 0.84% in
+`encode_factoradic_avx512`. That helper is a ZMM integer loop
+(`vpcmpnleud`, masked `vpsubd`, `vpbroadcastd`, `vpaddd`) followed by scalar
+128-bit factorial accumulation. The modest one-thread speedup follows from
+how little of the runtime that loop is.
+
+System-wide IMC counters during the same six-compression process, after
+subtracting a 127.02 MiB/s read and 38.02 MiB/s write idle baseline:
+
+| path | threads | DRAM read | DRAM write | average bandwidth |
+| --- | ---: | ---: | ---: | ---: |
+| AVX-512 | 1 | 313 MiB | 358 MiB | 306 MiB/s |
+| AVX-512 | 16 | 1,085 MiB | 992 MiB | 3,179 MiB/s |
+
+One thread retires about 31,000 demand L3 load misses per compression
+(`mem_load_retired.l3_miss`) and about 1.26 million `longest_lat_cache.miss`
+events. Sixteen threads retire about 87,000 demand L3 load misses and about
+3.17 million `longest_lat_cache.miss` events per compression. The one-thread
+rate is far below this CPU's DRAM ceiling; the encoder is limited by the
+scalar routing work shown in the profile.
+
+`/usr/bin/time -v` on the full benchmark process, including its forward and
+inverse check of every entry, reported 112,248 kB maximum resident set for
+16-thread AVX-512 at 1,048,576 entries and 100,248 kB for the portable
+encoder. That wall time is dominated by the serial check. The compression
+medians above exclude it.
 
 ### Lookup
 
-1,048,576 entries and 100,000 seeded random lookups, with the middle stored
-separately. The lookup tool reports one pass per mode. Compression for this
-run used the automatic backend, which selects AVX-512 on this CPU. The timed
-lookups themselves stay on the portable CPU path.
+1,048,575 entries and 100,000 seeded random lookups. The tool reports one
+pass per mode. Compression uses the automatic backend, which selects AVX-512
+here. The timed lookups stay on the portable CPU path. The file was written
+immediately before the timed passes, so cold and warm file times agree and
+both are page-cache hits.
 
-| mode | forward | inverse |
-| --- | ---: | ---: |
-| memory | 3,776.34 ns | 3,771.05 ns |
-| mmap | 3,769.63 ns | 3,767.89 ns |
-| file, cold | 11,599.3 ns | 12,347.3 ns |
-| file, warm | 11,583 ns | 12,336.6 ns |
+| middle placement | memory forward | memory inverse | mmap forward | mmap inverse | file forward | file inverse |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| separate | 3,879.39 ns | 3,896.59 ns | 3,884.13 ns | 3,892.65 ns | 11,635.4 ns | 11,474.5 ns |
+| embedded input | 3,918.23 ns | 3,933.61 ns | 3,934.64 ns | 3,938.11 ns | 11,251.4 ns | 11,686.8 ns |
+| embedded output | 3,939.27 ns | 3,923.16 ns | 3,919.39 ns | 3,925.74 ns | 11,126.4 ns | 11,135.9 ns |
+
+File columns are the warm pass. Embedded output is the fastest file case on
+this host, by a few hundred nanoseconds. Memory and mmap agree. A separate
+1,048,576-entry run with the default layout landed in the same range: about
+3.77 µs in memory and about 11.6–12.3 µs from the file reader.
 
 ```sh
+for layout in separate input output; do
+  ./build/benes-lookup-benchmark 1048575 100000 "$layout"
+done
 ./build/benes-lookup-benchmark 1048576 100000
 ```
 
-Memory and mmap take the same time on this host. A second pass over the
-explicit file reader is the warm measurement; it stays several times slower
-because each lookup follows data-dependent packets through the page cache.
+## Remaining CUDA runs
 
-## Remaining CUDA and AVX-512 runs
+CUDA has not been executed. Its separate 32-bit and 64-bit descriptors and
+buffers, bit-63 atomic parents, grid-stride large-work dispatch, clustered
+atomic switch packing, exact-bit middle offsets, and host serialization were
+reviewed for parity with the tested Metal path, but no CUDA compiler or
+hardware was available. On an NVIDIA machine:
 
-The AVX-512 section records one-thread compression at 1,048,576 entries and
-the default lookup workload. Default `ctest` passed on that host. CUDA has
-not been executed. Its separate 32-bit and 64-bit descriptors and buffers,
-bit-63 atomic parents, grid-stride large-work dispatch, clustered atomic
-switch packing, exact-bit middle offsets, and host serialization were reviewed
-for parity with the tested Metal path, but no CUDA compiler or hardware was
-available. Still required:
-
-1. On CUDA, build with the backend enabled.
-2. Run `ctest` and `benes-tests --extended`. On the AVX-512 host, run
-   `benes-tests --extended`; the default `ctest` already passed.
+1. Build with the CUDA backend enabled.
+2. Run `ctest` and `benes-tests --extended`.
 3. Run the exact size, non-power-of-two, and lookup-layout commands in the
-   sections above. The recorded AVX-512 numbers cover `n = 1,048,576`, one
-   thread, and the separate middle placement.
+   sections above.
 4. Require both 32-bit and 64-bit source paths to match the single-thread
    portable bytes. The test suite includes backend-gated compact boundary
-   cases through 4,097 entries; on AVX-512 it also exhausts all permutations
-   through size 8.
-5. For CUDA, sweep threadblock sizes and capture occupancy, memory throughput,
-   launch gaps, and kernel/device time on the selected NVIDIA GPU.
-6. For AVX-512, collect vector instruction mix, cycles per element, memory
-   bandwidth, and the same 1/2/4/... thread sweep.
+   cases through 4,097 entries.
+5. Sweep threadblock sizes and capture occupancy, memory throughput, launch
+   gaps, and kernel/device time on the selected GPU.
 
 Do not treat source review or cross-compilation as runtime validation.
 
 The x86-64 cross-compile and `otool` inspection command in `README.md` remains
-the maintenance check available on Apple Silicon. Runtime numbers belong in
-the AVX-512 section above.
+the maintenance check available on Apple Silicon. AVX-512 runtime numbers are
+in the section above.
