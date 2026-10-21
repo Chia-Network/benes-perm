@@ -9,11 +9,12 @@ M5 Max:
 - Apple Clang 21.0
 - Release build
 
-The AVX-512 section records a separate host. Commands are shown so the same
-workload can be repeated on CUDA hardware. Times are medians of five runs
+The AVX-512 and CUDA sections record separate hosts. Commands are shown so
+the workloads can be repeated. Times are medians of five runs
 unless stated otherwise. Compression includes validation, allocation, GPU
 submission, synchronization, and canonical blob construction.
-`device_seconds` is Metal command-buffer GPU time.
+`device_seconds` is Metal command-buffer GPU time or CUDA event time for the
+GPU compute region, excluding host/device transfers.
 
 ## Correctness
 
@@ -385,23 +386,76 @@ done
 ./build/benes-lookup-benchmark 1048576 100000
 ```
 
-## Remaining CUDA runs
+## CUDA
 
-CUDA has not been executed. Its separate 32-bit and 64-bit descriptors and
-buffers, bit-63 atomic parents, grid-stride large-work dispatch, clustered
-atomic switch packing, exact-bit middle offsets, and host serialization were
-reviewed for parity with the tested Metal path, but no CUDA compiler or
-hardware was available. On an NVIDIA machine:
+Collected on 2026-10-20:
 
-1. Build with the CUDA backend enabled.
-2. Run `ctest` and `benes-tests --extended`.
-3. Run the exact size, non-power-of-two, and lookup-layout commands in the
-   sections above.
-4. Require both 32-bit and 64-bit source paths to match the single-thread
-   portable bytes. The test suite includes backend-gated compact boundary
-   cases through 4,097 entries.
-5. Sweep threadblock sizes and capture occupancy, memory throughput, launch
-   gaps, and kernel/device time on the selected GPU.
+- NVIDIA GeForce RTX 4070 Ti, 12,282 MiB reported device memory
+- NVIDIA driver 560.35.05, CUDA toolkit 12.6.85
+- Intel Xeon w3-2435, 8 cores and 16 hardware threads
+- Ubuntu 22.04.5 LTS, kernel 5.15.0-161-generic, g++ 11.4.0
+- CMake 3.31.6, Release build, CUDA architecture 89
+- Source: `main` at `e592521` plus the CUDA pointer fix at `5dbe5a0`
+
+CUDA 12.6 initially rejected the `atomicCAS` call in `compact_find64` because
+its address was declared `const auto*`. Removing the pointer's `const`
+qualifier allowed the CUDA backend to build.
+
+### Correctness
+
+Both CTest and the extended suite passed with CUDA enabled and AVX-512
+disabled. The suite checks CUDA output against single-thread portable bytes,
+including compact boundaries through 4,097 entries, 32-bit/64-bit source
+parity, custom layouts, and extended non-power-of-two inputs through 65,537
+entries. The fixed golden input from current `main` is used; these runs need
+no temporary test changes or golden-test exclusions.
+
+The CUDA 32-bit and 64-bit benchmark paths also passed full forward/inverse
+lookup verification at 1,048,575 entries. This larger benchmark verifies
+lookups; its output was not separately compared byte for byte against the
+portable encoder.
+
+```sh
+cmake -S . -B build-cuda -DCMAKE_BUILD_TYPE=Release \
+  -DBENES_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89 \
+  -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+  -DBENES_ENABLE_METAL=OFF -DBENES_ENABLE_AVX512=OFF
+cmake --build build-cuda -j 8
+ctest --test-dir build-cuda --output-on-failure
+./build-cuda/benes-tests --extended
+```
+
+### Compression
+
+One seeded random permutation of 1,048,575 entries, with five measured
+compressions per path. Paths ran sequentially after the correctness suites
+finished. The thread argument was 8; CUDA kernels use the backend's fixed
+256-thread block size.
+
+| source width | wall seconds | device seconds | host seconds | million entries/s |
+| --- | ---: | ---: | ---: | ---: |
+| 32-bit | 0.025197 | 0.012957 | 0.012240 | 41.61 |
+| 64-bit | 0.033341 | 0.017530 | 0.015811 | 31.45 |
+
+Rows report the median wall-time run and its corresponding device time.
+`host seconds` is wall time minus device time, rather than an independently
+profiled host interval. Both paths emitted 2,449,430-byte blobs with
+2,449,406-byte payloads. Full lookup verification runs after the timed
+compressions and is excluded from these medians.
+
+```sh
+./build-cuda/benes-benchmark cuda 1048575 8 5
+./build-cuda/benes-benchmark cuda64 1048575 8 5
+```
+
+### Remaining CUDA measurements
+
+The full compression-size, neighboring power-of-two, and lookup-layout
+benchmark matrices above remain to be collected on this GPU. Threadblock
+sweeps, occupancy, memory throughput, and launch-gap profiling also remain.
+These results establish runtime correctness for the tested workloads and a
+single compression workload's timing; they do not characterize GPU occupancy
+or large-index behavior beyond the bounded 64-bit source tests.
 
 Do not treat source review or cross-compilation as runtime validation.
 
